@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TSHP 課程查詢結果</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .status-open { background-color: #d1e7dd; color: #0f5132; font-weight: bold; padding: 4px 8px; border-radius: 4px; }
+        .status-full { background-color: #f8d7da; color: #842029; padding: 4px 8px; border-radius: 4px; }
+        .table-hover tbody tr:hover { background-color: #f2f2f2; }
+        a { text-decoration: none; color: #0d6efd; }
+        a:hover { text-decoration: underline; }
+    </style>
+</head>
+<body class="bg-light p-4">
+    <div class="container bg-white p-4 rounded shadow">
+        <h2 class="mb-4 border-bottom pb-2">🏥 課程自動查詢系統</h2>
+        
+        <div class="card mb-4">
+            <div class="card-header bg-primary text-white">查詢設定</div>
+            <div class="card-body">
+                <div class="row g-3 align-items-end">
+                    <div class="col-md-5">
+                        <label class="form-label">開始日期</label>
+                        <input type="date" id="startDate" class="form-control">
+                    </div>
+                    <div class="col-md-5">
+                        <label class="form-label">結束日期</label>
+                        <input type="date" id="endDate" class="form-control">
+                    </div>
+                    <div class="col-md-2">
+                        <button onclick="saveAndFilter()" class="btn btn-dark w-100">保存並查詢</button>
+                    </div>
+                </div>
+                <div class="form-text mt-2 text-muted">
+                    * 設定會自動儲存在此瀏覽器中。系統每日早上 09:00 更新資料庫。
+                </div>
+            </div>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th width="20%">課程期間</th>
+                        <th width="50%">課程主題</th>
+                        <th width="10%">積分</th>
+                        <th width="20%">報名資訊</th>
+                    </tr>
+                </thead>
+                <tbody id="courseTable">
+                    <tr><td colspan="4" class="text-center py-4">資料讀取中...</td></tr>
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="text-end text-muted mt-3 small">
+            資料最後更新：<span id="lastUpdate">--</span>
+        </div>
+    </div>
+
+    <script>
+        let allData = [];
+
+        window.onload = async function() {
+            // 讀取保存的設定
+            const savedStart = localStorage.getItem('startDate');
+            const savedEnd = localStorage.getItem('endDate');
+            
+            if(savedStart) document.getElementById('startDate').value = savedStart;
+            if(savedEnd) document.getElementById('endDate').value = savedEnd;
+
+            await loadData();
+        };
+
+        function saveAndFilter() {
+            const start = document.getElementById('startDate').value;
+            const end = document.getElementById('endDate').value;
+            
+            // 保存設定
+            localStorage.setItem('startDate', start);
+            localStorage.setItem('endDate', end);
+            
+            renderTable();
+            alert("設定已保存！");
+        }
+
+        async function loadData() {
+            try {
+                // 讀取 JSON 檔案 (加上 timestamp 防止快取)
+                const response = await fetch('data.json?t=' + new Date().getTime());
+                const json = await response.json();
+                
+                document.getElementById('lastUpdate').innerText = json.last_updated;
+                allData = json.data;
+                renderTable();
+            } catch (error) {
+                console.error(error);
+                document.getElementById('courseTable').innerHTML = '<tr><td colspan="4" class="text-center text-danger">無法讀取資料 (data.json 尚未生成)</td></tr>';
+            }
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('courseTable');
+            const userStart = document.getElementById('startDate').value;
+            const userEnd = document.getElementById('endDate').value;
+            
+            tbody.innerHTML = '';
+
+            const filtered = allData.filter(item => {
+                if (!userStart || !userEnd) return true;
+                
+                // 處理日期格式 (網頁可能是民國年 113/01/01 或西元 2024/01/01)
+                // 我們只取 "開始日期" 來比較
+                let dateStr = item.period.split('~')[0].trim();
+                let parts = dateStr.match(/(\d+)\/(\d+)\/(\d+)/);
+                
+                if (parts) {
+                    let year = parseInt(parts[1]);
+                    // 如果是民國年，轉西元
+                    if (year < 1911) year += 1911;
+                    
+                    let fmtDate = `${year}-${parts[2]}-${parts[3]}`;
+                    return fmtDate >= userStart && fmtDate <= userEnd;
+                }
+                return true; // 若無法解析日期，預設顯示
+            });
+
+            if (filtered.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center py-4">此日期區間無符合課程。</td></tr>';
+                return;
+            }
+
+            filtered.forEach(item => {
+                let statusClass = 'text-secondary';
+                if (item.reg_status.includes("開放")) statusClass = 'status-open';
+                if (item.reg_status.includes("額滿") || item.reg_status.includes("截止")) statusClass = 'status-full';
+
+                const row = `
+                    <tr>
+                        <td>${item.period}</td>
+                        <td><a href="${item.link}" target="_blank" class="fw-bold">${item.topic}</a></td>
+                        <td><span class="badge bg-secondary">${item.points}</span></td>
+                        <td><span class="${statusClass}">${item.reg_status}</span></td>
+                    </tr>
+                `;
+                tbody.innerHTML += row;
+            });
+        }
+    </script>
+</body>
+</html>
