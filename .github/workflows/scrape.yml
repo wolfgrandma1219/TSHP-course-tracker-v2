@@ -1,0 +1,40 @@
+name: Daily Course Scraper
+
+on:
+  schedule:
+    # 每天 UTC 01:00 (台灣時間 09:00) 執行
+    - cron: '0 1 * * *'
+  # 允許手動點擊按鈕觸發 (方便測試)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          playwright install chromium
+
+      - name: Run scraper
+        run: |
+          python scraper.py
+
+      - name: Commit and push changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add data.json
+          # 如果沒有變更就不提交，避免錯誤
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-update course data" && git push)
